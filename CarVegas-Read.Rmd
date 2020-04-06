@@ -1,0 +1,168 @@
+---
+title: "Exploration of Las Vegas traffic data: Reading the data"
+author: "David Lovell"
+date: "6 April 2020"
+output: html_document
+# See https://rmarkdown.rstudio.com/authoring_bibliographies_and_citations.html for info on referencing
+bibliography: Traffic.bib
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+rm(list=ls())
+
+suppressWarnings(library(tidyverse))
+suppressWarnings(library(lubridate))
+suppressWarnings(library(scales))
+
+#suppressWarnings(library(plotly))
+#suppressWarnings(library(processx))     # Used by orca() see https://plot.ly/r/static-image-export/
+#Sys.setenv(MAPBOX_TOKEN = 11122223333444)
+#save.to.pdf <- FALSE
+#save.to.svg <- FALSE
+```
+
+# Read in the data
+Smit has provided
+
+* `whole_year.csv` (863Mb) which combines traffic data from http://bugatti.nvfast.org/ from September 2016 to August 2017 inclusive
+
+* `sensors.csv` which
+
+> contains the geolocation (gps coordinates, longitude and latitude) of each one of the sensors (using as key the combination of RoadwayID and SegmentID (in the example “526-2”)), this will allow you to create all kinds of maps, I used this combined with the data to create different heat maps just like the ones displayed in http://bugatti.nvfast.org/
+
+* `functions_scripts.r` and `functions_scripts2.r` which show how to ingest and work with the `.csv` files
+
+## Read `whole_year.csv`
+### Read the first few rows of `whole_year.csv`
+
+Because of the volume of data involved, I will start with just a few rows of `whole_year.csv` before trying to ingest the lot.
+
+```{r}
+# Descriptive names for the columns, courtesy of Smit
+col.names <- c("id","date","year","season","season.week","weekday","timestamp","speed","volume","occupancy")
+  
+read.csv(
+  file="./data/whole_year.csv",
+  header=FALSE,
+  nrows=5,
+  col.names=col.names) -> traffic
+```
+
+Let's view what has been read in and what data types have been established
+
+```{r}
+traffic
+```
+
+```{r}
+str(traffic)
+```
+
+Working with dates and times can be challenging. The [`lubridate` package](https://lubridate.tidyverse.org/) is a big help and enables us to parse and store strings like `r traffic$date[1]` straightforwardly, e.g.,
+
+```{r}
+mdy_hms(traffic$date)
+```
+
+We could also enforce the actual time zone of the data, but I don't think we need do that.
+Let's read in only the columns that we need
+
+```{r}
+# See https://www.r-bloggers.com/using-colclasses-to-load-data-more-quickly-in-r/, also note that you have to quote NULL
+colClasses <- c("factor",     NA, "NULL",   "NULL",        "NULL",    "NULL",      "NULL", "numeric", "numeric",   "numeric")
+col.names  <- c(    "id", "date", "year", "season", "season.week", "weekday", "timestamp",   "speed",  "volume", "occupancy")
+read.csv(
+  file="./data/whole_year.csv",
+  header=FALSE,
+  nrows=5,
+  col.names=col.names,
+  colClasses=colClasses) %>%
+  mutate(date=mdy_hms(date)) -> traffic
+
+rm(colClasses, col.names)
+str(traffic)
+```
+
+Now we can get the month, day of week, hours and minutes out of the `date` variable as needed
+```{r}
+traffic %>%
+  mutate(
+    month=month(date, label = TRUE),
+    wday=wday(date, label=TRUE),
+    hour=hour(date),
+    minute=minute(date)
+    )
+```
+
+At the end of this script we will use the code we have developed here to ingest the entire data set and save it as an R object for later use.
+Before we do that let's turn our attention to the `sensors.csv` data
+
+## Read `sensors.csv`
+### Read the first few rows of `sensors.csv`
+
+```{r}
+read.csv(
+  file="./data/sensors.csv",
+  header=TRUE,
+  nrows=5) -> sensors
+```
+
+```{r}
+sensors
+```
+
+This looks straightforward to read. It looks like the sensor IDs may have the regular expression form `number-number`.
+Let's read the entire data set in...
+
+```{r}
+read.csv(
+  file="./data/sensors.csv",
+  header=TRUE) -> sensors
+```
+
+...and check for anything that doesn't conform to that pattern
+```{r}
+sensors %>% filter(!str_detect(id, "^\\d+[^\\d]+\\d+$")) 
+```
+
+I'm not sure what to do about these 17 values, but will leave that to later
+
+Rignt now I would like to understand the spatial relationships between these sensors, including their adjacency and the direction of travel they measure.
+
+### Read and explore `sensors.csv`
+
+Let's start trying to figure this out sensor adjacency and direction of travel by reading everything in and plotting the data.
+
+```{r}
+read.csv(
+  file="./data/sensors.csv",
+  header=TRUE) %>%
+  separate(id, into=c("id.A", "id.B"), remove=FALSE)   -> sensors
+
+#sensors$id[c(120, 121, 123, 135, 141, 142, 143, 144, 145, 146, 147, 150, 153, 154, 159, 165, 173)]
+```
+
+```{r}
+gg <- ggplot(data=arrange(sensors, id.A), aes(x=lon, y=lat)) + geom_line() + geom_path(aes(colour=id.B)) # + geom_text(aes(label=id)) 
+```
+
+```{r}
+extent <- 0.05 * c(-1, + 1)
+gg + coord_cartesian(ylim=35.8+extent, xlim=-115.3+extent)
+```
+
+
+```{r}
+extent <- 0.01 * c(-1, + 1)
+gg + coord_cartesian(ylim=35.8+extent, xlim=-115.3125+extent)
+```
+
+Try sorting out the data in order of sensor
+
+```{r}
+gg <- ggplot(data=arrange(sensors, id.A), aes(x=lon, y=lat)) + geom_path() + geom_point(aes(colour=id.B)) 
+
+gg
+```
+
