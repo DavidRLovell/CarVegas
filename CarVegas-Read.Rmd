@@ -15,9 +15,10 @@ suppressWarnings(library(tidyverse))
 suppressWarnings(library(lubridate))
 suppressWarnings(library(scales))
 
-#suppressWarnings(library(plotly))
-#suppressWarnings(library(processx))     # Used by orca() see https://plot.ly/r/static-image-export/
-#Sys.setenv(MAPBOX_TOKEN = 11122223333444)
+suppressWarnings(library(plotly))
+library(igraph)
+suppressWarnings(library(processx))     # Used by orca() see https://plot.ly/r/static-image-export/
+Sys.setenv(MAPBOX_TOKEN = 11122223333444)
 #save.to.pdf <- FALSE
 #save.to.svg <- FALSE
 ```
@@ -143,26 +144,39 @@ read.csv(
 #sensors$id[c(120, 121, 123, 135, 141, 142, 143, 144, 145, 146, 147, 150, 153, 154, 159, 165, 173)]
 ```
 
-```{r}
-gg <- ggplot(data=arrange(sensors, id.A), aes(x=lon, y=lat)) + geom_line() + geom_path(aes(colour=id.B)) # + geom_text(aes(label=id)) 
-```
-
+Note that we are (for the moment) simply displaying latititudes and longitudes as $y$ and $x$ coordinates, ignoting the fact that they are based on a spherical geometry system. This should be OK because we are looking at a relateively small patch of the earth's surface, but for more accurate 2D projections, we should use the Open Geospatial Consortium's Simple Features Access representation (see, e.g., the sf package, and https://www.r-spatial.org/)
 ```{r}
 extent <- 0.05 * c(-1, + 1)
-gg + coord_cartesian(ylim=35.8+extent, xlim=-115.3+extent)
-```
-
-
-```{r}
-extent <- 0.01 * c(-1, + 1)
-gg + coord_cartesian(ylim=35.8+extent, xlim=-115.3125+extent)
-```
-
-Try sorting out the data in order of sensor
-
-```{r}
-gg <- ggplot(data=arrange(sensors, id.A), aes(x=lon, y=lat)) + geom_path() + geom_point(aes(colour=id.B)) 
-
+xlim   <- -115.3+ extent
+ylim   <-   35.8 + extent
+gg <- ggplot(data=arrange(sensors, id.A), aes(x=lon, y=lat)) + 
+  geom_path() +
+  geom_point(aes(colour=id.B)) +
+  coord_equal() +
+  annotate("rect", xmin=min(xlim), xmax=max(xlim), ymin=min(ylim), ymax=max(ylim), fill=NA, colour="red")
 gg
 ```
+
+```{r}
+gg + coord_equal(xlim=xlim,ylim=ylim)
+```
+
+
+### Try plotly
+
+Plotly gives an interactive window in which to explore the data. *Note that this has to be opened in a web browser to display*
+
+```{r}
+pp <- plot_ly(
+  data=sensors, type="scatter", mode="markers+text", textposition = "top right",
+  x=~lon, y=~lat, text=~id
+  ) %>% 
+  layout(
+    title = 'Las Vegas traffic sensors',
+    yaxis = list(
+      scaleanchor = "x") # Damn, it took a long time to find out how to do this, see https://plotly.com/r/axes/#fixedratio-axes
+  )
+pp
+```
+
 
